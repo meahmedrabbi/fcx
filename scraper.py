@@ -84,7 +84,22 @@ async def scrape_page(browser, url: str) -> tuple[list[dict], str | None]:
 
     try:
         log.info("Navigating → %s", url)
-        await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+        response = await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+
+        # Log the direct HTTP response
+        if response:
+            body = await response.body()
+            log.info(
+                "Response | url=%s status=%d %s headers=%s body_bytes=%d\n%s",
+                response.url,
+                response.status,
+                response.status_text,
+                dict(response.headers),
+                len(body),
+                body.decode("utf-8", errors="replace"),
+            )
+        else:
+            log.warning("No response received for %s", url)
 
         # Let the page settle and simulate human reading behaviour
         await human_delay(1.0, 2.5)
