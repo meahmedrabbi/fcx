@@ -15,9 +15,18 @@ from config import OUTPUT_FILE, PROXY_URL, REQUEST_TIMEOUT, TARGET_PATH, TARGET_
 
 
 def normalize_proxy_url(proxy_url: str) -> str:
+    """Return the proxy URL with scheme socks5://.
+
+    Any existing http:// scheme is converted to socks5://. Bare addresses
+    (no scheme) and all other schemes are left as-is, except that bare
+    addresses receive a socks5:// prefix.
+    """
     if "://" in proxy_url:
+        scheme, rest = proxy_url.split("://", 1)
+        if scheme.lower() == "http" and rest:
+            return f"socks5://{rest}"
         return proxy_url
-    return f"http://{proxy_url}"
+    return f"socks5://{proxy_url}"
 
 
 def main() -> None:
