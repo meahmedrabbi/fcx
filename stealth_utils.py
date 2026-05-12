@@ -43,7 +43,8 @@ except Exception:
 from config import VIEWPORTS, DELAY_MIN, DELAY_MAX
 
 
-async def new_stealth_context(browser: Browser) -> BrowserContext:    """Create a new browser context with stealth settings."""
+async def new_stealth_context(browser: Browser) -> BrowserContext:
+    """Create a new browser context with stealth settings."""
     viewport = random.choice(VIEWPORTS)
     user_agent = _get_ua()
 
