@@ -201,6 +201,67 @@ def _get(session: requests.Session, url: str) -> requests.Response:
         sys.exit(1)
 
 
+def extract_forms(html: str, page_url: str) -> list[dict]:
+    """Return a list of form descriptors found in *html*.
+
+    Each descriptor is a dict with:
+      - ``action``   : resolved URL the form submits to
+      - ``method``   : HTTP method (GET / POST, defaulting to GET)
+      - ``fields``   : list of dicts, one per interactive control:
+            name, type, value, placeholder, required, tag
+      - ``submits``  : list of dicts, one per submit trigger:
+            tag, type, name, value, text
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    forms: list[dict] = []
+
+    for form in soup.find_all("form"):
+        action_raw: str = form.get("action", "") or ""
+        action = urljoin(page_url, action_raw) if action_raw else page_url
+        method = (form.get("method", "GET") or "GET").upper()
+
+        fields: list[dict] = []
+        for tag in form.find_all(["input", "textarea", "select"]):
+            tag_name: str = tag.name
+            field_type = tag.get("type", "text" if tag_name == "input" else tag_name).lower()
+            # Skip hidden submit/image/reset – we handle submits separately
+            if field_type in ("submit", "image", "reset", "button"):
+                continue
+            fields.append({
+                "tag": tag_name,
+                "type": field_type,
+                "name": tag.get("name", ""),
+                "value": tag.get("value", ""),
+                "placeholder": tag.get("placeholder", ""),
+                "required": tag.has_attr("required"),
+            })
+
+        submits: list[dict] = []
+        # <input type="submit|image">
+        for tag in form.find_all("input", type=lambda t: t and t.lower() in ("submit", "image")):
+            submits.append({
+                "tag": "input",
+                "type": tag.get("type", "submit").lower(),
+                "name": tag.get("name", ""),
+                "value": tag.get("value", ""),
+                "text": "",
+            })
+        # <button> (type defaults to "submit" inside a form)
+        for tag in form.find_all("button"):
+            btn_type = (tag.get("type", "submit") or "submit").lower()
+            submits.append({
+                "tag": "button",
+                "type": btn_type,
+                "name": tag.get("name", ""),
+                "value": tag.get("value", ""),
+                "text": tag.get_text(strip=True),
+            })
+
+        forms.append({"action": action, "method": method, "fields": fields, "submits": submits})
+
+    return forms
+
+
 def find_target_url(landing_html: str, base_url: str, target_path: str) -> str:
     """Return the full URL for *target_path*, preserving any dynamic query params.
 
@@ -281,6 +342,34 @@ def main() -> None:
     print(f"Description: {description}")
     print(f"Size       : {len(html):,} characters")
     print(f"Saved to   : {OUTPUT_FILE}")
+
+    # ── Step 5: print form / input summary ───────────────────────────────────
+    forms = extract_forms(html, str(response.url))
+    if not forms:
+        print("\n[Forms]  No forms found on the page.")
+    else:
+        print(f"\n[Forms]  Found {len(forms)} form(s):")
+        for i, form in enumerate(forms, 1):
+            print(f"\n  ┌── Form {i} ─────────────────────────────")
+            print(f"  │  Action : {form['action']}")
+            print(f"  │  Method : {form['method']}")
+            if form["fields"]:
+                print(f"  │  Fields ({len(form['fields'])}):")
+                for f in form["fields"]:
+                    req = " [required]" if f["required"] else ""
+                    ph  = f"  placeholder={f['placeholder']!r}" if f["placeholder"] else ""
+                    val = f"  value={f['value']!r}" if f["value"] else ""
+                    print(f"  │    <{f['tag']} type={f['type']!r} name={f['name']!r}{val}{ph}{req}>")
+            else:
+                print("  │  Fields : (none)")
+            if form["submits"]:
+                print(f"  │  Submit buttons ({len(form['submits'])}):")
+                for s in form["submits"]:
+                    label = s["text"] or s["value"] or s["name"] or "(unlabelled)"
+                    print(f"  │    <{s['tag']} type={s['type']!r} name={s['name']!r}> → {label!r}")
+            else:
+                print("  │  Submit buttons: (none)")
+            print("  └─────────────────────────────────────")
 
 
 if __name__ == "__main__":
