@@ -91,9 +91,9 @@ def main() -> None:
 
     # ── Step 4: print a concise summary ──────────────────────────────────────
     soup = BeautifulSoup(html, "html.parser")
-    title = soup.title.string.strip() if soup.title and soup.title.string is not None else "(no title)"
+    title = str(soup.title.string).strip() if soup.title and soup.title.string is not None else "(no title)"
     description_tag = soup.find("meta", attrs={"name": "description"})
-    description = description_tag["content"].strip() if description_tag and description_tag.get("content") else "(no description)"
+    description = description_tag.get("content", "").strip() if description_tag and description_tag.get("content") else "(no description)"
 
     print()
     print(f"URL        : {response.url}")
