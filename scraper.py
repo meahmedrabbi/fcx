@@ -145,7 +145,7 @@ def build_session_headers(mode: str) -> dict[str, str]:
             "q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
         ),
         "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Encoding": "gzip, deflate",
         "DNT": "1",
         "Upgrade-Insecure-Requests": "1",
         "sec-fetch-dest": "document",
@@ -236,7 +236,7 @@ def main() -> None:
     response = _get(session, target)
     print(f"         Status: {response.status_code}")
 
-    html = response.text
+    html = response.content.decode("utf-8", errors="replace")
 
     # ── Step 3: save the full HTML ────────────────────────────────────────────
     with open(OUTPUT_FILE, "w", encoding="utf-8") as file:
