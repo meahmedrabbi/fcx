@@ -4,4 +4,5 @@ playwright-stealth==1.0.6
 fake-useragent==1.5.1
 python-dotenv==1.0.1
 requests==2.32.3
+PySocks==1.7.1
 setuptools<81
