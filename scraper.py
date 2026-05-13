@@ -23,7 +23,7 @@ from __future__ import annotations
 import random
 import sys
 import time
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -201,6 +201,28 @@ def _get(session: requests.Session, url: str) -> requests.Response:
         sys.exit(1)
 
 
+def find_target_url(landing_html: str, base_url: str, target_path: str) -> str:
+    """Return the full URL for *target_path*, preserving any dynamic query params.
+
+    Scans every ``<a href>`` in *landing_html* for one whose path component
+    matches *target_path* (trailing-slash-insensitive).  If such a link is
+    found its entire href – including any ``?key=value`` query string – is
+    resolved against *base_url* and returned.
+
+    Falls back to ``urljoin(base_url, target_path)`` (no query string) if no
+    matching link is found, so the scraper behaves exactly as before when the
+    landing page does not contain the link.
+    """
+    soup = BeautifulSoup(landing_html, "html.parser")
+    normalised_target = target_path.rstrip("/")
+    for tag in soup.find_all("a", href=True):
+        href: str = tag["href"]
+        parsed = urlparse(href)
+        if parsed.path.rstrip("/") == normalised_target:
+            return urljoin(base_url, href)
+    return urljoin(base_url, target_path)
+
+
 def main() -> None:
     # ── Browser mode selection ────────────────────────────────────────────────
     mode = ask_browser_mode()
@@ -218,6 +240,7 @@ def main() -> None:
     # ── Step 1: open the base / landing URL ──────────────────────────────────
     print(f"\n[Step 1] Opening base URL: {TARGET_URL}")
     base_response = _get(session, TARGET_URL)
+    base_html = base_response.content.decode("utf-8", errors="replace")
     print(f"         Status: {base_response.status_code}  |  Cookies collected: {len(session.cookies)}")
 
     # ── Anti-ban delay ────────────────────────────────────────────────────────
@@ -225,8 +248,10 @@ def main() -> None:
     print(f"[Delay]  Waiting {delay:.1f}s before next request...")
     time.sleep(delay)
 
-    # ── Step 2: open the target path ─────────────────────────────────────────
-    target = urljoin(TARGET_URL, TARGET_PATH)
+    # ── Step 2: open the target path (with any dynamic query params) ──────────
+    # find_target_url scans the landing page for a link whose path matches
+    # TARGET_PATH and carries over any ?key=value query parameters it finds.
+    target = find_target_url(base_html, TARGET_URL, TARGET_PATH)
     # Update headers to reflect an internal navigation from the base URL
     session.headers.update({
         "Referer": TARGET_URL,
