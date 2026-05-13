@@ -43,7 +43,7 @@ from config import (
 # Each profile carries the User-Agent and optional Client Hint headers.
 # Multiple profiles per mode so a random one is chosen on each run.
 
-_DESKTOP_PROFILES: list[dict[str, str | None]] = [
+_DESKTOP_PROFILES: list[dict[str, str]] = [
     {
         "user_agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -65,12 +65,12 @@ _DESKTOP_PROFILES: list[dict[str, str | None]] = [
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) "
             "Gecko/20100101 Firefox/125.0"
         ),
-        "sec-ch-ua": None,
-        "sec-ch-ua-platform": None,
+        "sec-ch-ua": "",
+        "sec-ch-ua-platform": "",
     },
 ]
 
-_MOBILE_PROFILES: list[dict[str, str | None]] = [
+_MOBILE_PROFILES: list[dict[str, str]] = [
     {
         "user_agent": (
             "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 "
@@ -92,8 +92,8 @@ _MOBILE_PROFILES: list[dict[str, str | None]] = [
             "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) "
             "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1"
         ),
-        "sec-ch-ua": None,
-        "sec-ch-ua-platform": None,
+        "sec-ch-ua": "",
+        "sec-ch-ua-platform": "",
     },
 ]
 
@@ -155,10 +155,10 @@ def build_session_headers(mode: str) -> dict[str, str]:
         "sec-ch-ua-mobile": "?1" if is_mobile else "?0",
     }
 
-    if profile.get("sec-ch-ua"):
-        headers["sec-ch-ua"] = profile["sec-ch-ua"]  # type: ignore[assignment]
-    if profile.get("sec-ch-ua-platform"):
-        headers["sec-ch-ua-platform"] = profile["sec-ch-ua-platform"]  # type: ignore[assignment]
+    if profile["sec-ch-ua"]:
+        headers["sec-ch-ua"] = profile["sec-ch-ua"]
+    if profile["sec-ch-ua-platform"]:
+        headers["sec-ch-ua-platform"] = profile["sec-ch-ua-platform"]
 
     return headers
 
@@ -246,7 +246,8 @@ def main() -> None:
     soup = BeautifulSoup(html, "html.parser")
     title = str(soup.title.string).strip() if soup.title and soup.title.string is not None else "(no title)"
     description_tag = soup.find("meta", attrs={"name": "description"})
-    description = description_tag.get("content", "").strip() if description_tag and description_tag.get("content") else "(no description)"
+    content = description_tag.get("content", "").strip() if description_tag else ""
+    description = content or "(no description)"
 
     print()
     print(f"URL        : {response.url}")
