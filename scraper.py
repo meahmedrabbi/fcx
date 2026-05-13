@@ -1,5 +1,15 @@
 """
-scraper.py – fetch a configured path, save the HTML, and print summary info.
+scraper.py – two-step scraper: open the base URL, then the target path,
+             show summary info, and save the HTML.
+
+Flow
+----
+1. Open TARGET_URL          – establishes a session and picks up any cookies
+                              set by the landing page.
+2. Open TARGET_URL/TARGET_PATH – follows through to the real target using the
+                              session established in step 1.
+3. Print a concise summary  – URL, status, title, description, size.
+4. Save full HTML            – written to OUTPUT_FILE (default: scrapper.html).
 
 Run:
     python scraper.py
@@ -31,14 +41,12 @@ def normalize_proxy_url(proxy_url: str) -> str:
     return f"socks5://{proxy_url}"
 
 
-def main() -> None:
-    target = urljoin(TARGET_URL, TARGET_PATH)
-    normalized_proxy_url = normalize_proxy_url(PROXY_URL) if PROXY_URL else ""
-    proxies = {"http": normalized_proxy_url, "https": normalized_proxy_url} if normalized_proxy_url else None
-
+def _get(session: requests.Session, url: str) -> requests.Response:
+    """Perform a GET request and raise on HTTP errors, with friendly messages."""
     try:
-        response = requests.get(target, timeout=REQUEST_TIMEOUT, proxies=proxies)
+        response = session.get(url, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
+        return response
     except requests.exceptions.ProxyError as exc:
         print(f"[ERROR] Proxy error – could not reach the proxy server: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -55,18 +63,39 @@ def main() -> None:
         print(f"[ERROR] Unexpected request error: {exc}", file=sys.stderr)
         sys.exit(1)
 
+
+def main() -> None:
+    normalized_proxy_url = normalize_proxy_url(PROXY_URL) if PROXY_URL else ""
+    proxies = {"http": normalized_proxy_url, "https": normalized_proxy_url} if normalized_proxy_url else None
+
+    session = requests.Session()
+    if proxies:
+        session.proxies.update(proxies)
+
+    # ── Step 1: open the base / landing URL ──────────────────────────────────
+    print(f"[Step 1] Opening base URL: {TARGET_URL}")
+    base_response = _get(session, TARGET_URL)
+    print(f"         Status: {base_response.status_code}  |  Cookies collected: {len(session.cookies)}")
+
+    # ── Step 2: open the target path ─────────────────────────────────────────
+    target = urljoin(TARGET_URL, TARGET_PATH)
+    print(f"[Step 2] Opening target path: {target}")
+    response = _get(session, target)
+    print(f"         Status: {response.status_code}")
+
     html = response.text
 
-    # Save the full HTML to the output file (not printed to console)
+    # ── Step 3: save the full HTML ────────────────────────────────────────────
     with open(OUTPUT_FILE, "w", encoding="utf-8") as file:
         file.write(html)
 
-    # Print a concise summary to the console
+    # ── Step 4: print a concise summary ──────────────────────────────────────
     soup = BeautifulSoup(html, "html.parser")
     title = soup.title.string.strip() if soup.title and soup.title.string is not None else "(no title)"
     description_tag = soup.find("meta", attrs={"name": "description"})
     description = description_tag["content"].strip() if description_tag and description_tag.get("content") else "(no description)"
 
+    print()
     print(f"URL        : {response.url}")
     print(f"Status     : {response.status_code}")
     print(f"Title      : {title}")
