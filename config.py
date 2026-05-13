@@ -25,6 +25,13 @@ DELAY_MAX = float(os.environ.get("DELAY_MAX", "4.0"))
 # When set, the interactive prompt is skipped.
 BROWSER_MODE = os.environ.get("BROWSER_MODE", "")
 
+# Retry settings for transient connection / proxy / timeout errors.
+# RETRY_COUNT  – how many additional attempts after the first failure (0 = no retry).
+# RETRY_BACKOFF – base seconds for exponential back-off: attempt 1 sleeps BACKOFF*2^0,
+#                 attempt 2 sleeps BACKOFF*2^1, etc.
+RETRY_COUNT = int(os.environ.get("RETRY_COUNT", "4"))
+RETRY_BACKOFF = float(os.environ.get("RETRY_BACKOFF", "2.0"))
+
 # Viewports used by stealth_utils for Playwright-based contexts.
 VIEWPORTS = [
     {"width": 1920, "height": 1080},

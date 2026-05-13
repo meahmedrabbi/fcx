@@ -35,6 +35,8 @@ from config import (
     OUTPUT_FILE,
     PROXY_URL,
     REQUEST_TIMEOUT,
+    RETRY_BACKOFF,
+    RETRY_COUNT,
     TARGET_PATH,
     TARGET_URL,
 )
@@ -179,26 +181,55 @@ def normalize_proxy_url(proxy_url: str) -> str:
 
 
 def _get(session: requests.Session, url: str) -> requests.Response:
-    """Perform a GET request and raise on HTTP errors, with friendly messages."""
-    try:
-        response = session.get(url, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        return response
-    except requests.exceptions.ProxyError as exc:
-        print(f"[ERROR] Proxy error – could not reach the proxy server: {exc}", file=sys.stderr)
-        sys.exit(1)
-    except requests.exceptions.ConnectionError as exc:
-        print(f"[ERROR] Connection error – failed to establish a connection: {exc}", file=sys.stderr)
-        sys.exit(1)
-    except requests.exceptions.Timeout:
-        print(f"[ERROR] Request timed out after {REQUEST_TIMEOUT}s.", file=sys.stderr)
-        sys.exit(1)
-    except requests.exceptions.HTTPError as exc:
-        print(f"[ERROR] HTTP error: {exc}", file=sys.stderr)
-        sys.exit(1)
-    except requests.exceptions.RequestException as exc:
-        print(f"[ERROR] Unexpected request error: {exc}", file=sys.stderr)
-        sys.exit(1)
+    """Perform a GET request, retrying transient errors with exponential back-off.
+
+    Transient errors (ConnectionError, ProxyError, Timeout) are retried up to
+    RETRY_COUNT additional times.  Each attempt waits RETRY_BACKOFF * 2^(attempt-1)
+    seconds before retrying.  Non-transient errors (HTTP, unexpected) exit immediately.
+    """
+    _TRANSIENT = (
+        requests.exceptions.ProxyError,
+        requests.exceptions.ConnectionError,
+        requests.exceptions.Timeout,
+    )
+
+    last_exc: Exception | None = None
+    for attempt in range(1, RETRY_COUNT + 2):  # 1 original + RETRY_COUNT retries
+        try:
+            response = session.get(url, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            return response
+        except _TRANSIENT as exc:
+            last_exc = exc
+            if attempt <= RETRY_COUNT:
+                # attempt=1 → wait BACKOFF*1, attempt=2 → BACKOFF*2, attempt=3 → BACKOFF*4 …
+                wait = RETRY_BACKOFF * (2 ** (attempt - 1))
+                kind = "Proxy" if isinstance(exc, requests.exceptions.ProxyError) else (
+                    "Timeout" if isinstance(exc, requests.exceptions.Timeout) else "Connection"
+                )
+                print(
+                    f"[Retry {attempt}/{RETRY_COUNT}] {kind} error – retrying in {wait:.1f}s: {exc}",
+                    file=sys.stderr,
+                )
+                time.sleep(wait)
+            else:
+                kind = "Proxy error" if isinstance(exc, requests.exceptions.ProxyError) else (
+                    f"Request timed out after {REQUEST_TIMEOUT}s"
+                    if isinstance(exc, requests.exceptions.Timeout)
+                    else "Connection error – failed to establish a connection"
+                )
+                print(f"[ERROR] {kind}: {last_exc}", file=sys.stderr)
+                sys.exit(1)
+        except requests.exceptions.HTTPError as exc:
+            print(f"[ERROR] HTTP error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        except requests.exceptions.RequestException as exc:
+            print(f"[ERROR] Unexpected request error: {exc}", file=sys.stderr)
+            sys.exit(1)
+
+    # Unreachable – loop always returns or exits – but satisfies type checkers.
+    print(f"[ERROR] All {RETRY_COUNT + 1} attempts failed: {last_exc}", file=sys.stderr)
+    sys.exit(1)
 
 
 def extract_forms(html: str, page_url: str) -> list[dict]:
